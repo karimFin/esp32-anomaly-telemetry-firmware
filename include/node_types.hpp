@@ -9,6 +9,14 @@ enum class NodeState : uint8_t {
   Fault,
 };
 
+enum class AnomalySource : uint8_t {
+  None = 0,
+  Temperature,
+  Humidity,
+  Vibration,
+  Gas,
+};
+
 struct ThresholdConfig {
   float temperature_warning_c = 35.0f;
   float temperature_alarm_c = 45.0f;
@@ -35,6 +43,9 @@ struct ProcessedSample {
   float humidity_avg_pct = 0.0f;
   float vibration_avg_g = 0.0f;
   int gas_raw = 0;
+  float anomaly_score = 0.0f;
+  bool anomaly_detected = false;
+  AnomalySource anomaly_source = AnomalySource::None;
   uint32_t sample_id = 0;
   uint32_t timestamp_ms = 0;
 };

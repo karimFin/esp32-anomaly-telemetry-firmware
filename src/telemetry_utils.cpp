@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 
+#include "anomaly_detector.hpp"
+
 const char* telemetry_state_name(NodeState state) {
   switch (state) {
     case NodeState::Normal:
@@ -28,12 +30,14 @@ size_t format_telemetry_payload(char* out, size_t out_len, const ProcessedSample
   const int written = snprintf(
       out, out_len,
       "{\"sample\":%lu,\"temp_avg\":%.2f,\"hum_avg\":%.2f,\"vib_avg\":%.3f,\"gas\":%d,"
-      "\"state\":\"%s\",\"latched\":%d,\"safe_ms\":%lu,\"fault\":%d,\"reason\":\"%s\"}",
+      "\"state\":\"%s\",\"latched\":%d,\"safe_ms\":%lu,\"fault\":%d,\"reason\":\"%s\","
+      "\"anomaly_score\":%.2f,\"anomaly\":%d,\"anomaly_src\":\"%s\"}",
       static_cast<unsigned long>(sample.sample_id), sample.temperature_avg_c,
       sample.humidity_avg_pct, sample.vibration_avg_g, sample.gas_raw,
       telemetry_state_name(decision.state), decision.latched_alarm ? 1 : 0,
       static_cast<unsigned long>(decision.safe_hold_elapsed_ms),
-      supervisor_fault ? 1 : 0, reason);
+      supervisor_fault ? 1 : 0, reason, sample.anomaly_score,
+      sample.anomaly_detected ? 1 : 0, anomaly_source_name(sample.anomaly_source));
 
   if (written <= 0) {
     out[0] = '\0';
@@ -52,4 +56,3 @@ bool retry_interval_elapsed(uint32_t now_ms, uint32_t last_attempt_ms,
                             uint32_t retry_interval_ms) {
   return (now_ms - last_attempt_ms) >= retry_interval_ms;
 }
-
