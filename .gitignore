@@ -1,0 +1,5 @@
+.pio/
+.vscode/.browse.c_cpp.db*
+.DS_Store
+build/
+*.pyc
