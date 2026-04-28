@@ -17,7 +17,7 @@ jobs:
       - name: Build and run host tests
         run: |
           mkdir -p build
-          clang++ -std=c++17 -Iinclude test/test_core.cpp src/alarm_logic.cpp src/console_parser.cpp src/mpu6050_driver.cpp src/telemetry_utils.cpp -o build/test_core
+          clang++ -std=c++17 -Iinclude test/test_core.cpp src/alarm_logic.cpp src/anomaly_detector.cpp src/console_parser.cpp src/mpu6050_driver.cpp src/telemetry_utils.cpp -o build/test_core
           ./build/test_core
 
   platformio-build:
@@ -36,4 +36,3 @@ jobs:
 
       - name: Build ESP32 firmware
         run: pio run -e esp32dev
-

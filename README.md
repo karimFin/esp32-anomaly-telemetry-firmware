@@ -11,6 +11,7 @@ Simulator-first embedded capstone for `macOS 15` on `Apple Silicon`
 - `watchdog-style task supervision`
 - `UART diagnostics console`
 - `MQTT telemetry publishing`
+- `edge anomaly detection`
 - `NVS threshold persistence`
 - `offline MQTT queue + retry`
 - `TLS/auth-capable MQTT mode`
@@ -24,6 +25,7 @@ Simulator-first embedded capstone for `macOS 15` on `Apple Silicon`
 - `src/mpu6050_driver.cpp`: platform-independent I2C sensor driver
 - `src/i2c_bus_arduino.cpp`: Arduino/Wire implementation of the I2C bus abstraction
 - `src/mqtt_telemetry.cpp`: WiFi + MQTT telemetry client
+- `src/anomaly_detector.cpp`: lightweight on-device anomaly scoring
 - `src/config_persistence_esp32.cpp`: threshold config persistence in ESP32 flash (NVS)
 - `src/telemetry_utils.cpp`: payload formatting and retry helpers (host-testable)
 - `src/console_parser.cpp`: testable UART command parsing
@@ -136,6 +138,7 @@ set safe_ms 10000
 - Alarm state stays latched even after readings normalize until the safe hold timer expires
 - The serial console prints structured telemetry that looks like production device logs
 - Telemetry is published to MQTT when WiFi and broker are available
+- Runtime telemetry includes `anomaly_score` and dominant anomaly source
 - Changing thresholds over UART immediately affects the live system
 - If a task stops updating its heartbeat, the supervisor forces a `FAULT`
 
@@ -174,11 +177,11 @@ Sample payload:
 
 ## Run Host Tests On macOS
 
-These tests validate alarm logic, command parsing, I2C sensor-driver decoding, and telemetry formatting/retry helpers without Arduino or Wokwi:
+These tests validate alarm logic, command parsing, I2C sensor-driver decoding, anomaly detection, and telemetry formatting/retry helpers without Arduino or Wokwi:
 
 ```bash
 mkdir -p build
-clang++ -std=c++17 -Iinclude test/test_core.cpp src/alarm_logic.cpp src/console_parser.cpp src/mpu6050_driver.cpp src/telemetry_utils.cpp -o build/test_core
+clang++ -std=c++17 -Iinclude test/test_core.cpp src/alarm_logic.cpp src/anomaly_detector.cpp src/console_parser.cpp src/mpu6050_driver.cpp src/telemetry_utils.cpp -o build/test_core
 ./build/test_core
 ```
 
