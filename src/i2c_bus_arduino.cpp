@@ -41,7 +41,7 @@ void board_i2c_init(int sda_pin, int scl_pin) {
   Wire.begin(sda_pin, scl_pin);
 }
 
-ArduinoI2cBus& board_i2c_bus() {
+II2cBus& board_i2c_bus() {
   static ArduinoI2cBus bus;
   return bus;
 }

@@ -11,6 +11,9 @@ Simulator-first embedded capstone for `macOS 15` on `Apple Silicon`
 - `watchdog-style task supervision`
 - `UART diagnostics console`
 - `MQTT telemetry publishing`
+- `NVS threshold persistence`
+- `offline MQTT queue + retry`
+- `TLS/auth-capable MQTT mode`
 - `host-runnable unit tests`
 - `Wokwi` simulation
 
@@ -21,6 +24,8 @@ Simulator-first embedded capstone for `macOS 15` on `Apple Silicon`
 - `src/mpu6050_driver.cpp`: platform-independent I2C sensor driver
 - `src/i2c_bus_arduino.cpp`: Arduino/Wire implementation of the I2C bus abstraction
 - `src/mqtt_telemetry.cpp`: WiFi + MQTT telemetry client
+- `src/config_persistence_esp32.cpp`: threshold config persistence in ESP32 flash (NVS)
+- `src/telemetry_utils.cpp`: payload formatting and retry helpers (host-testable)
 - `src/console_parser.cpp`: testable UART command parsing
 - `include/*.hpp`: shared interfaces
 - `test/test_core.cpp`: host-side tests for macOS
@@ -142,6 +147,13 @@ The firmware publishes JSON payloads to:
 - Topic: `karimFin/esp32-edge-monitor-firmware/telemetry`
 - Publish cadence: about every `2 seconds` when new samples arrive
 - WiFi for Wokwi: `Wokwi-GUEST` (empty password)
+- Offline behavior: telemetry is buffered locally (bounded queue) and flushed on reconnect
+
+Security/auth mode can be enabled from `platformio.ini` build flags:
+
+- `MQTT_USE_TLS=1` switches default MQTT port to `8883`
+- `MQTT_TLS_INSECURE=1` allows quick TLS testing without certificate pinning
+- `MQTT_USERNAME` / `MQTT_PASSWORD` enable broker authentication
 
 Sample payload:
 
@@ -162,10 +174,17 @@ Sample payload:
 
 ## Run Host Tests On macOS
 
-These tests validate the alarm logic, command parser, and I2C sensor-driver decoding without Arduino or Wokwi:
+These tests validate alarm logic, command parsing, I2C sensor-driver decoding, and telemetry formatting/retry helpers without Arduino or Wokwi:
 
 ```bash
 mkdir -p build
-clang++ -std=c++17 -Iinclude test/test_core.cpp src/alarm_logic.cpp src/console_parser.cpp src/mpu6050_driver.cpp -o build/test_core
+clang++ -std=c++17 -Iinclude test/test_core.cpp src/alarm_logic.cpp src/console_parser.cpp src/mpu6050_driver.cpp src/telemetry_utils.cpp -o build/test_core
 ./build/test_core
 ```
+
+## CI
+
+GitHub Actions workflow runs on push/PR:
+
+- host unit tests (`clang++`)
+- PlatformIO build for `esp32dev`
