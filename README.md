@@ -1,119 +1,50 @@
-# Industrial Edge Node
+# ESP32 Edge Anomaly Telemetry Node
 
-Simulator-first embedded capstone for `macOS 15` on `Apple Silicon`
-## nutshell
-- `C++17` firmware structure
-- `ESP32` + `FreeRTOS` tasks
-- `queue-based task communication`
-- `I2C driver + hardware abstraction layer`
-- `sensor acquisition and filtering`
-- `alarm state machines and latched faults`
-- `watchdog-style task supervision`
-- `UART diagnostics console`
-- `MQTT telemetry publishing`
-- `edge anomaly detection`
-- `NVS threshold persistence`
-- `offline MQTT queue + retry`
-- `TLS/auth-capable MQTT mode`
-- `host-runnable unit tests`
-- `Wokwi` simulation
+Production-style embedded project that monitors industrial signals on `ESP32`, detects anomalies on-device, and publishes resilient MQTT telemetry.
 
-## Project Layout
+## What It Does
+- Samples `DHT22`, gas analog input, and `MPU6050` vibration.
+- Runs `FreeRTOS` task pipeline with queue-based handoff.
+- Applies threshold-based alarm logic with latched safety behavior.
+- Computes lightweight anomaly score (`0.0-1.0`) and anomaly source.
+- Publishes JSON telemetry over MQTT with offline queue + retry.
+- Persists runtime thresholds to ESP32 `NVS`.
+- Exposes operator controls via UART console.
 
-- `src/main.cpp`: ESP32 firmware entry point and task wiring
-- `src/alarm_logic.cpp`: testable alarm and filtering logic
-- `src/mpu6050_driver.cpp`: platform-independent I2C sensor driver
-- `src/i2c_bus_arduino.cpp`: Arduino/Wire implementation of the I2C bus abstraction
-- `src/mqtt_telemetry.cpp`: WiFi + MQTT telemetry client
-- `src/anomaly_detector.cpp`: lightweight on-device anomaly scoring
-- `src/config_persistence_esp32.cpp`: threshold config persistence in ESP32 flash (NVS)
-- `src/telemetry_utils.cpp`: payload formatting and retry helpers (host-testable)
-- `src/console_parser.cpp`: testable UART command parsing
-- `include/*.hpp`: shared interfaces
-- `test/test_core.cpp`: host-side tests for macOS
-- `diagram.json`: Wokwi hardware diagram
-- `wokwi.toml`: Wokwi + PlatformIO mapping
-- `platformio.ini`: build configuration
+## Architecture
+```text
+sensor_task -> processing_task -> control_task -> shared runtime
+                     |                              |
+                     |                              +-> telemetry_task (MQTT)
+                     +-> anomaly detector           +-> console_task (UART)
 
-## Simulated Hardware
+supervisor_task monitors heartbeats of all tasks and forces FAULT on stalls.
+```
 
-- `ESP32 DevKit V1`
-- `DHT22` for temperature and humidity
-- `slide potentiometer` as a gas/smoke analog sensor
-- `MPU6050` over `I2C` for vibration/condition monitoring
-- `green/yellow/red LEDs` for node state
+## Key Modules
+- `src/main.cpp`: task wiring, runtime orchestration, supervisor.
+- `src/alarm_logic.cpp`: threshold and latched alarm state machine.
+- `src/anomaly_detector.cpp`: adaptive baseline + variance anomaly scoring.
+- `src/mqtt_telemetry.cpp`: WiFi/MQTT client with retry and offline buffering.
+- `src/config_persistence_esp32.cpp`: threshold save/load with NVS.
+- `test/test_core.cpp`: host-runnable tests for core logic.
 
-## Firmware Behavior
-
-The node is split into five concurrent responsibilities:
-
-1. `sensor_task`: samples `DHT22`, gas input, and `MPU6050` every `500 ms`
-2. `processing_task`: computes moving averages
-3. `control_task`: evaluates thresholds and alarm state
-4. `console_task`: handles UART commands
-5. `supervisor_task`: detects stalled tasks and forces a fault state
-6. `telemetry_task`: connects to WiFi/MQTT and publishes JSON telemetry
-
-State behavior:
-
-- `NORMAL`: green LED on
-- `WARNING`: yellow LED blinks
-- `ALARM`: red LED blinks fast
-- `FAULT`: red and yellow alternate
-
-The alarm is latched. Once an alarm occurs, the node stays in `ALARM` until readings return to safe values for the configured hold time.
-
-The `MPU6050` is read through a small I2C abstraction. That separation is important in embedded jobs because application logic should not be tied directly to `Wire`, vendor HAL calls, or a specific board.
-
-## macOS Setup
-
-Install PlatformIO:
+## Quick Start
+1. Install PlatformIO:
 
 ```bash
 brew install platformio
 ```
 
-Optional local editor support:
-
-```bash
-brew install --cask visual-studio-code
-```
-
-## Build Firmware
-
-From this folder:
+2. Build firmware:
 
 ```bash
 pio run -e esp32dev
 ```
 
-## Run In Wokwi
+3. Run Wokwi simulation (uses `diagram.json` and `wokwi.toml`), then open serial monitor at `115200`.
 
-### Option 1: Browser
-
-1. Open [Wokwi](https://wokwi.com/).
-2. Create a new `ESP32` project.
-3. Create tabs for the files under `include/` and `src/`.
-4. Copy this repository's `src/*.cpp` and `include/*.hpp` contents into those tabs.
-5. Replace the project `diagram.json` with this repository's `diagram.json`.
-6. Start the simulator and open the serial monitor at `115200`.
-
-### Option 2: VS Code + Wokwi Extension
-
-1. Install the `PlatformIO IDE` and `Wokwi Simulator` extensions in VS Code.
-2. Build the firmware:
-
-```bash
-pio run -e esp32dev
-```
-
-3. Open the folder in VS Code.
-4. Start Wokwi simulation using the extension. It will use `wokwi.toml`.
-
-## UART Console Commands
-
-Use the serial monitor at `115200` and send one command per line:
-
+## UART Commands
 ```text
 help
 status
@@ -130,55 +61,22 @@ set gas_alarm 2900
 set safe_ms 10000
 ```
 
-## What To Observe
-
-- Moving the potentiometer upward pushes the gas reading toward `WARNING` and `ALARM`
-- Raising `DHT22` temperature can also trigger alarms
-- Changing the `MPU6050` orientation changes the derived vibration magnitude and can trigger `WARNING` or `ALARM`
-- Alarm state stays latched even after readings normalize until the safe hold timer expires
-- The serial console prints structured telemetry that looks like production device logs
-- Telemetry is published to MQTT when WiFi and broker are available
-- Runtime telemetry includes `anomaly_score` and dominant anomaly source
-- Changing thresholds over UART immediately affects the live system
-- If a task stops updating its heartbeat, the supervisor forces a `FAULT`
-
 ## MQTT Telemetry
-
-The firmware publishes JSON payloads to:
-
 - Broker: `broker.hivemq.com:1883`
 - Topic: `karimFin/esp32-edge-monitor-firmware/telemetry`
-- Publish cadence: about every `2 seconds` when new samples arrive
-- WiFi for Wokwi: `Wokwi-GUEST` (empty password)
-- Offline behavior: telemetry is buffered locally (bounded queue) and flushed on reconnect
+- Includes: sensor averages, state, fault info, `anomaly_score`, `anomaly_src`
+- Reliability: bounded offline queue + reconnect flush
+- Optional security flags in `platformio.ini`: `MQTT_USE_TLS`, `MQTT_USERNAME`, `MQTT_PASSWORD`
 
-Security/auth mode can be enabled from `platformio.ini` build flags:
+## Demo Narrative
+1. Start in `NORMAL` with stable sensor values.
+2. Increase gas/vibration to trigger `WARNING` and `ALARM`.
+3. Observe anomaly score rising before or during threshold transitions.
+4. Use UART `set` commands to tune thresholds live.
+5. Disconnect/reconnect network and confirm queued telemetry flushes.
+6. Reboot and verify threshold settings reload from NVS.
 
-- `MQTT_USE_TLS=1` switches default MQTT port to `8883`
-- `MQTT_TLS_INSECURE=1` allows quick TLS testing without certificate pinning
-- `MQTT_USERNAME` / `MQTT_PASSWORD` enable broker authentication
-
-Sample payload:
-
-```json
-{
-  "sample": 120,
-  "temp_avg": 33.27,
-  "hum_avg": 58.11,
-  "vib_avg": 0.142,
-  "gas": 1710,
-  "state": "WARNING",
-  "latched": 0,
-  "safe_ms": 0,
-  "fault": 0,
-  "reason": "none"
-}
-```
-
-## Run Host Tests On macOS
-
-These tests validate alarm logic, command parsing, I2C sensor-driver decoding, anomaly detection, and telemetry formatting/retry helpers without Arduino or Wokwi:
-
+## Host Tests
 ```bash
 mkdir -p build
 clang++ -std=c++17 -Iinclude test/test_core.cpp src/alarm_logic.cpp src/anomaly_detector.cpp src/console_parser.cpp src/mpu6050_driver.cpp src/telemetry_utils.cpp -o build/test_core
@@ -186,8 +84,6 @@ clang++ -std=c++17 -Iinclude test/test_core.cpp src/alarm_logic.cpp src/anomaly_
 ```
 
 ## CI
-
-GitHub Actions workflow runs on push/PR:
-
-- host unit tests (`clang++`)
-- PlatformIO build for `esp32dev`
+- GitHub Actions runs on push/PR:
+- host unit tests
+- `pio run -e esp32dev`
