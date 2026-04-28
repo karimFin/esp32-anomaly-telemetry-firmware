@@ -2,10 +2,12 @@
 #include <cstdlib>
 #include <iostream>
 #include <map>
+#include <string>
 
 #include "alarm_logic.hpp"
 #include "console_parser.hpp"
 #include "mpu6050_driver.hpp"
+#include "telemetry_utils.hpp"
 
 namespace {
 
@@ -175,6 +177,38 @@ void test_mpu6050_driver() {
               "vibration magnitude should be derived from total acceleration");
 }
 
+void test_telemetry_payload_format() {
+  ProcessedSample sample{};
+  sample.sample_id = 77;
+  sample.temperature_avg_c = 31.5f;
+  sample.humidity_avg_pct = 67.25f;
+  sample.vibration_avg_g = 0.181f;
+  sample.gas_raw = 2100;
+
+  AlarmDecision decision{};
+  decision.state = NodeState::Warning;
+  decision.latched_alarm = true;
+  decision.safe_hold_elapsed_ms = 1234;
+
+  char out[384];
+  const size_t len =
+      format_telemetry_payload(out, sizeof(out), sample, decision, false, "none");
+  expect_true(len > 0, "telemetry payload should be generated");
+
+  const std::string json(out);
+  expect_true(json.find("\"sample\":77") != std::string::npos, "payload should include sample");
+  expect_true(json.find("\"state\":\"WARNING\"") != std::string::npos,
+              "payload should include state text");
+  expect_true(json.find("\"latched\":1") != std::string::npos,
+              "payload should include latch status");
+}
+
+void test_retry_interval_elapsed() {
+  expect_true(!retry_interval_elapsed(1000, 0, 3000), "retry should wait for interval");
+  expect_true(retry_interval_elapsed(3000, 0, 3000), "retry should allow exact interval");
+  expect_true(retry_interval_elapsed(4500, 1000, 3000), "retry should allow later attempt");
+}
+
 }  // namespace
 
 int main() {
@@ -185,6 +219,8 @@ int main() {
   test_manual_reset_requires_safe_condition();
   test_console_parser();
   test_mpu6050_driver();
+  test_telemetry_payload_format();
+  test_retry_interval_elapsed();
 
   if (g_failures != 0) {
     std::cerr << g_failures << " test(s) failed\n";
