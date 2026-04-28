@@ -21,6 +21,10 @@ sensor_task -> processing_task -> control_task -> shared runtime
 supervisor_task monitors heartbeats of all tasks and forces FAULT on stalls.
 ```
 
+## Prototype Demo GIF
+![Prototype simulation flow](assets/prototype-simulation-demo.gif)
+This is an illustrative prototype animation showing expected task flow, anomaly scoring, state transitions, and MQTT behavior.
+
 ## Key Modules
 - `src/main.cpp`: task wiring, runtime orchestration, supervisor.
 - `src/alarm_logic.cpp`: threshold and latched alarm state machine.
