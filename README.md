@@ -10,6 +10,7 @@ Simulator-first embedded capstone for `macOS 15` on `Apple Silicon`
 - `alarm state machines and latched faults`
 - `watchdog-style task supervision`
 - `UART diagnostics console`
+- `MQTT telemetry publishing`
 - `host-runnable unit tests`
 - `Wokwi` simulation
 
@@ -19,6 +20,7 @@ Simulator-first embedded capstone for `macOS 15` on `Apple Silicon`
 - `src/alarm_logic.cpp`: testable alarm and filtering logic
 - `src/mpu6050_driver.cpp`: platform-independent I2C sensor driver
 - `src/i2c_bus_arduino.cpp`: Arduino/Wire implementation of the I2C bus abstraction
+- `src/mqtt_telemetry.cpp`: WiFi + MQTT telemetry client
 - `src/console_parser.cpp`: testable UART command parsing
 - `include/*.hpp`: shared interfaces
 - `test/test_core.cpp`: host-side tests for macOS
@@ -43,6 +45,7 @@ The node is split into five concurrent responsibilities:
 3. `control_task`: evaluates thresholds and alarm state
 4. `console_task`: handles UART commands
 5. `supervisor_task`: detects stalled tasks and forces a fault state
+6. `telemetry_task`: connects to WiFi/MQTT and publishes JSON telemetry
 
 State behavior:
 
@@ -127,8 +130,35 @@ set safe_ms 10000
 - Changing the `MPU6050` orientation changes the derived vibration magnitude and can trigger `WARNING` or `ALARM`
 - Alarm state stays latched even after readings normalize until the safe hold timer expires
 - The serial console prints structured telemetry that looks like production device logs
+- Telemetry is published to MQTT when WiFi and broker are available
 - Changing thresholds over UART immediately affects the live system
 - If a task stops updating its heartbeat, the supervisor forces a `FAULT`
+
+## MQTT Telemetry
+
+The firmware publishes JSON payloads to:
+
+- Broker: `broker.hivemq.com:1883`
+- Topic: `karimFin/esp32-edge-monitor-firmware/telemetry`
+- Publish cadence: about every `2 seconds` when new samples arrive
+- WiFi for Wokwi: `Wokwi-GUEST` (empty password)
+
+Sample payload:
+
+```json
+{
+  "sample": 120,
+  "temp_avg": 33.27,
+  "hum_avg": 58.11,
+  "vib_avg": 0.142,
+  "gas": 1710,
+  "state": "WARNING",
+  "latched": 0,
+  "safe_ms": 0,
+  "fault": 0,
+  "reason": "none"
+}
+```
 
 ## Run Host Tests On macOS
 
