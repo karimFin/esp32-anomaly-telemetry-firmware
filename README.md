@@ -1,9 +1,7 @@
 # Industrial Edge Node
 
-Simulator-first embedded capstone for `macOS 15` on `Apple Silicon`, built to practice common embedded skills used in industrial IoT, telecom, smart buildings, and energy products.
-
-## Skills Covered
-
+Simulator-first embedded capstone for `macOS 15` on `Apple Silicon`
+## nutshell
 - `C++17` firmware structure
 - `ESP32` + `FreeRTOS` tasks
 - `queue-based task communication`
@@ -141,29 +139,3 @@ mkdir -p build
 clang++ -std=c++17 -Iinclude test/test_core.cpp src/alarm_logic.cpp src/console_parser.cpp src/mpu6050_driver.cpp -o build/test_core
 ./build/test_core
 ```
-
-## Why This Project Matters
-
-This project mimics the shape of real embedded products more closely than isolated driver demos:
-
-- Industrial nodes sample and filter noisy inputs
-- Telecom and IoT firmware often separates acquisition, decision logic, and diagnostics
-- Real products usually isolate bus drivers from business logic so firmware can be tested off-target
-- Alarm latching and supervision are common in safety-adjacent systems
-- Testable core logic is a strong signal in interviews because it shows you can build reliable firmware, not just hardware demos
-
-## Common Interview Questions
-
-- Why should task-to-task communication use queues instead of shared mutable globals?
-- Why hide `I2C` behind an interface instead of calling `Wire` everywhere?
-- Why keep ISRs and hardware callbacks small?
-- What makes a good watchdog or supervisor design?
-- Why is a latched alarm useful in field systems?
-- How do you choose sampling periods and queue sizes?
-- What logic belongs in testable platform-independent code versus hardware-specific code?
-
-## Next Extensions
-
-- Publish telemetry over `MQTT` to a local broker on your Mac
-- Replace thresholding with a tiny anomaly score model in `C++`
-- Port the core app logic to `QEMU` for platform separation practice
