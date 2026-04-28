@@ -1,6 +1,5 @@
 # ESP32 Edge Anomaly Telemetry Node
-
-Production-style embedded project that monitors industrial signals on `ESP32`, detects anomalies on-device, and publishes resilient MQTT telemetry.
+monitors industrial signals on `ESP32`, detects anomalies on-device, and publishes resilient MQTT telemetry.
 
 ## What It Does
 - Samples `DHT22`, gas analog input, and `MPU6050` vibration.
