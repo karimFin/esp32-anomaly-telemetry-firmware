@@ -8,6 +8,7 @@
 #include "alarm_logic.hpp"
 #include "board_i2c.hpp"
 #include "console_parser.hpp"
+#include "mqtt_telemetry.hpp"
 #include "mpu6050_driver.hpp"
 #include "node_types.hpp"
 
@@ -32,6 +33,7 @@ enum class TaskId : uint8_t {
   Control,
   Console,
   Supervisor,
+  Telemetry,
   Count,
 };
 
@@ -47,6 +49,7 @@ QueueHandle_t g_sensor_queue = nullptr;
 QueueHandle_t g_processed_queue = nullptr;
 DHTesp g_dht;
 Mpu6050Driver g_mpu(board_i2c_bus());
+MqttTelemetry g_mqtt;
 portMUX_TYPE g_lock = portMUX_INITIALIZER_UNLOCKED;
 volatile uint32_t g_heartbeat_ms[static_cast<size_t>(TaskId::Count)] = {};
 volatile bool g_manual_reset_requested = false;
@@ -206,13 +209,14 @@ void handle_console_command(const ParsedCommand& cmd) {
       print_help();
       break;
     case CommandType::Status:
-      Serial.printf("status: state=%s latched=%d safe_to_reset=%d safe_elapsed_ms=%lu fault=%d reason=%s sample=%lu temp=%.2f hum=%.2f vib=%.3f gas=%d\n",
+      Serial.printf("status: state=%s latched=%d safe_to_reset=%d safe_elapsed_ms=%lu fault=%d reason=%s mqtt=%d sample=%lu temp=%.2f hum=%.2f vib=%.3f gas=%d\n",
                     state_name(runtime.latest_decision.state),
                     runtime.latest_decision.latched_alarm ? 1 : 0,
                     runtime.latest_decision.safe_to_reset ? 1 : 0,
                     static_cast<unsigned long>(runtime.latest_decision.safe_hold_elapsed_ms),
                     runtime.supervisor_fault ? 1 : 0,
                     runtime.supervisor_reason,
+                    g_mqtt.connected() ? 1 : 0,
                     static_cast<unsigned long>(runtime.latest_sample.sample_id),
                     runtime.latest_sample.temperature_avg_c,
                     runtime.latest_sample.humidity_avg_pct,
@@ -432,6 +436,30 @@ void supervisor_task(void*) {
   }
 }
 
+void telemetry_task(void*) {
+  uint32_t last_publish_ms = 0;
+  uint32_t last_sample_id = 0;
+
+  while (true) {
+    update_heartbeat(TaskId::Telemetry);
+    g_mqtt.loop();
+
+    const SharedRuntime runtime = snapshot_runtime();
+    const uint32_t now = millis();
+
+    if ((now - last_publish_ms) >= 2000 &&
+        runtime.latest_sample.sample_id != last_sample_id) {
+      if (g_mqtt.publish_snapshot(runtime.latest_sample, runtime.latest_decision,
+                                  runtime.supervisor_fault, runtime.supervisor_reason)) {
+        last_publish_ms = now;
+        last_sample_id = runtime.latest_sample.sample_id;
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+}
+
 }  // namespace
 
 void setup() {
@@ -446,6 +474,7 @@ void setup() {
   analogReadResolution(12);
   board_i2c_init(kPinI2cSda, kPinI2cScl);
   g_dht.setup(kPinDht, DHTesp::DHT22);
+  g_mqtt.begin();
   if (!g_mpu.initialize()) {
     Serial.println("warning: mpu6050 init failed, vibration will stay at 0");
   }
@@ -473,6 +502,7 @@ void setup() {
   xTaskCreatePinnedToCore(control_task, "control", 4096, nullptr, 1, nullptr, 1);
   xTaskCreatePinnedToCore(console_task, "console", 4096, nullptr, 1, nullptr, 1);
   xTaskCreatePinnedToCore(supervisor_task, "supervisor", 4096, nullptr, 1, nullptr, 1);
+  xTaskCreatePinnedToCore(telemetry_task, "telemetry", 4096, nullptr, 1, nullptr, 1);
 }
 
 void loop() {
