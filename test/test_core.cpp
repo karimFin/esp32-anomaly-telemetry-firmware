@@ -5,6 +5,7 @@
 #include <string>
 
 #include "alarm_logic.hpp"
+#include "anomaly_detector.hpp"
 #include "console_parser.hpp"
 #include "mpu6050_driver.hpp"
 #include "telemetry_utils.hpp"
@@ -184,6 +185,9 @@ void test_telemetry_payload_format() {
   sample.humidity_avg_pct = 67.25f;
   sample.vibration_avg_g = 0.181f;
   sample.gas_raw = 2100;
+  sample.anomaly_score = 0.72f;
+  sample.anomaly_detected = true;
+  sample.anomaly_source = AnomalySource::Gas;
 
   AlarmDecision decision{};
   decision.state = NodeState::Warning;
@@ -201,12 +205,41 @@ void test_telemetry_payload_format() {
               "payload should include state text");
   expect_true(json.find("\"latched\":1") != std::string::npos,
               "payload should include latch status");
+  expect_true(json.find("\"anomaly_score\":0.72") != std::string::npos,
+              "payload should include anomaly score");
+  expect_true(json.find("\"anomaly\":1") != std::string::npos,
+              "payload should include anomaly flag");
+  expect_true(json.find("\"anomaly_src\":\"gas\"") != std::string::npos,
+              "payload should include anomaly source");
 }
 
 void test_retry_interval_elapsed() {
   expect_true(!retry_interval_elapsed(1000, 0, 3000), "retry should wait for interval");
   expect_true(retry_interval_elapsed(3000, 0, 3000), "retry should allow exact interval");
   expect_true(retry_interval_elapsed(4500, 1000, 3000), "retry should allow later attempt");
+}
+
+void test_anomaly_detector_spike_detection() {
+  AnomalyDetector detector;
+  ProcessedSample sample{};
+
+  for (uint32_t i = 0; i < 25; ++i) {
+    sample.temperature_avg_c = 26.0f;
+    sample.humidity_avg_pct = 50.0f;
+    sample.vibration_avg_g = 0.03f;
+    sample.gas_raw = 1200;
+    const AnomalyResult result = detector.evaluate(sample);
+    if (i < 20) {
+      expect_true(!result.detected, "warmup should not trigger anomaly");
+    }
+  }
+
+  sample.vibration_avg_g = 0.80f;
+  const AnomalyResult spike = detector.evaluate(sample);
+  expect_true(spike.detected, "vibration spike should trigger anomaly");
+  expect_true(spike.source == AnomalySource::Vibration,
+              "anomaly source should identify dominant signal");
+  expect_true(spike.score > 0.60f, "anomaly score should be elevated");
 }
 
 }  // namespace
@@ -221,6 +254,7 @@ int main() {
   test_mpu6050_driver();
   test_telemetry_payload_format();
   test_retry_interval_elapsed();
+  test_anomaly_detector_spike_detection();
 
   if (g_failures != 0) {
     std::cerr << g_failures << " test(s) failed\n";

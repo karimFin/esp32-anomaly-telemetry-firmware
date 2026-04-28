@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "alarm_logic.hpp"
+#include "anomaly_detector.hpp"
 #include "board_i2c.hpp"
 #include "config_persistence.hpp"
 #include "console_parser.hpp"
@@ -214,7 +215,7 @@ void handle_console_command(const ParsedCommand& cmd) {
       print_help();
       break;
     case CommandType::Status:
-      Serial.printf("status: state=%s latched=%d safe_to_reset=%d safe_elapsed_ms=%lu fault=%d reason=%s mqtt=%d sample=%lu temp=%.2f hum=%.2f vib=%.3f gas=%d\n",
+      Serial.printf("status: state=%s latched=%d safe_to_reset=%d safe_elapsed_ms=%lu fault=%d reason=%s mqtt=%d sample=%lu temp=%.2f hum=%.2f vib=%.3f gas=%d anomaly_score=%.2f anomaly=%d anomaly_src=%s\n",
                     state_name(runtime.latest_decision.state),
                     runtime.latest_decision.latched_alarm ? 1 : 0,
                     runtime.latest_decision.safe_to_reset ? 1 : 0,
@@ -226,7 +227,10 @@ void handle_console_command(const ParsedCommand& cmd) {
                     runtime.latest_sample.temperature_avg_c,
                     runtime.latest_sample.humidity_avg_pct,
                     runtime.latest_sample.vibration_avg_g,
-                    runtime.latest_sample.gas_raw);
+                    runtime.latest_sample.gas_raw,
+                    runtime.latest_sample.anomaly_score,
+                    runtime.latest_sample.anomaly_detected ? 1 : 0,
+                    anomaly_source_name(runtime.latest_sample.anomaly_source));
       break;
     case CommandType::Thresholds:
       print_thresholds(runtime.config);
@@ -299,6 +303,7 @@ void processing_task(void*) {
   RollingAverage temp_avg(8);
   RollingAverage hum_avg(8);
   RollingAverage vib_avg(8);
+  AnomalyDetector anomaly_detector;
 
   while (true) {
     SensorSample sample{};
@@ -310,6 +315,10 @@ void processing_task(void*) {
       processed.humidity_avg_pct = hum_avg.add(sample.humidity_pct);
       processed.vibration_avg_g = vib_avg.add(sample.vibration_g);
       processed.gas_raw = sample.gas_raw;
+      const AnomalyResult anomaly = anomaly_detector.evaluate(processed);
+      processed.anomaly_score = anomaly.score;
+      processed.anomaly_detected = anomaly.detected;
+      processed.anomaly_source = anomaly.source;
       processed.sample_id = sample.sample_id;
       processed.timestamp_ms = sample.timestamp_ms;
 
@@ -349,11 +358,13 @@ void control_task(void*) {
                     runtime.supervisor_reason, runtime.config);
 
       Serial.printf(
-          "{\"sample\":%lu,\"temp_avg\":%.2f,\"hum_avg\":%.2f,\"vib_avg\":%.3f,\"gas\":%d,\"state\":\"%s\",\"latched\":%d,\"safe_ms\":%lu}\n",
+          "{\"sample\":%lu,\"temp_avg\":%.2f,\"hum_avg\":%.2f,\"vib_avg\":%.3f,\"gas\":%d,\"state\":\"%s\",\"latched\":%d,\"safe_ms\":%lu,\"anomaly_score\":%.2f,\"anomaly\":%d,\"anomaly_src\":\"%s\"}\n",
           static_cast<unsigned long>(processed.sample_id), processed.temperature_avg_c,
           processed.humidity_avg_pct, processed.vibration_avg_g, processed.gas_raw,
           state_name(last_decision.state), last_decision.latched_alarm ? 1 : 0,
-          static_cast<unsigned long>(last_decision.safe_hold_elapsed_ms));
+          static_cast<unsigned long>(last_decision.safe_hold_elapsed_ms),
+          processed.anomaly_score, processed.anomaly_detected ? 1 : 0,
+          anomaly_source_name(processed.anomaly_source));
     }
 
     const uint32_t now = millis();
