@@ -7,6 +7,7 @@
 
 #include "alarm_logic.hpp"
 #include "board_i2c.hpp"
+#include "config_persistence.hpp"
 #include "console_parser.hpp"
 #include "mqtt_telemetry.hpp"
 #include "mpu6050_driver.hpp"
@@ -118,10 +119,14 @@ void store_runtime(const ProcessedSample& sample, const AlarmDecision& decision,
   portEXIT_CRITICAL(&g_lock);
 }
 
-void save_config(const ThresholdConfig& cfg) {
+void save_config(const ThresholdConfig& cfg, bool persist_to_flash = true) {
   portENTER_CRITICAL(&g_lock);
   g_runtime.config = cfg;
   portEXIT_CRITICAL(&g_lock);
+
+  if (persist_to_flash && !save_config_to_flash(cfg)) {
+    Serial.println("warning: failed to persist config to flash");
+  }
 }
 
 void request_manual_reset() {
@@ -438,7 +443,7 @@ void supervisor_task(void*) {
 
 void telemetry_task(void*) {
   uint32_t last_publish_ms = 0;
-  uint32_t last_sample_id = 0;
+  uint32_t last_sample_id = UINT32_MAX;
 
   while (true) {
     update_heartbeat(TaskId::Telemetry);
@@ -492,7 +497,14 @@ void setup() {
     }
   }
 
-  save_config(ThresholdConfig{});
+  ThresholdConfig boot_cfg{};
+  if (load_config_from_flash(boot_cfg)) {
+    save_config(boot_cfg, false);
+    Serial.println("config: loaded thresholds from flash");
+  } else {
+    save_config(boot_cfg, true);
+    Serial.println("config: using default thresholds");
+  }
 
   print_help();
   Serial.println("industrial edge node started");
