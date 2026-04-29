@@ -1,4 +1,4 @@
-# ESP32 Edge Anomaly Telemetry Node
+
 monitors industrial signals on `ESP32`, detects anomalies on-device, and publishes resilient MQTT telemetry.
 
 ## What It Does
